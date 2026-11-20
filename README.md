@@ -1,134 +1,85 @@
-# BigData2026-Assignment2
+# Assignment 2 - Predicting GitHub User Activity
 
-**Updates are marked with ⭐.**
+A heterogeneous GNN (relational deep learning) that predicts, for each test user, which of 6
+activities they will do during 2026/11/22 00:00 – 11/29 00:00 (Taiwan time).
+All of my own code is in one notebook, `run.ipynb`. It calls the TA's `scripts/preprocess.py`
+(to build the 8 tables) and `scripts/evaluate.py` (to score and check the format), which are
+used unchanged.
 
-In this assignment you predict what GitHub users will do in the coming week. For each test
-user, you predict which of 6 activities (opening a pull request, pushing code, and so on) the
-user will perform during the test week.
+## Data Source
 
-This repository contains:
+GH Archive: https://www.gharchive.org/
+
+The data is used for educational purposes within this course only.
+
+## Files
 
 ```
-assignment2/
-+-- README.md                  # download, build the tables, submit
-+-- SCHEMA.md                  # every column, explained
-+-- scripts/
-|   +-- preprocess.py          # builds the 8 tables from GH Archive
-|   +-- evaluate.py            # checks the format, computes the score
-|   +-- cohort.txt             # contains 9,000 anonymized user IDs (read by preprocess.py)
-+-- submission/
-    +-- test_input.csv         # official test users
-    +-- sample_submission.csv  # example output in the correct format
+run.ipynb                  # all of my code: download -> preprocess -> model -> output
+requirements.txt
+scripts/preprocess.py      # TA's script
+scripts/evaluate.py        # TA's script
+scripts/cohort.txt
+submission/test_input.csv  # official test users
+SCHEMA.md                  # TA's description of the 8 tables
+work/                      # created when running (not in git)
+  raw/                     # GH Archive hourly files
+  data/db/                 # the 8 tables written by preprocess.py
+  outputs/output.csv       # final prediction
 ```
 
-## ⭐ 1. Download the GH Archive files
+## How to run
 
-Download the hourly files of the time period you want from [GH Archive](https://www.gharchive.org)
-into your own folder `RAW_DATA_FOLDER`. GH Archive provides one file per hour, named by UTC date
-and hour.
+Tested with Python 3.13.1 on Windows, CPU only (no GPU needed).
+Versions used: torch 2.15.0+cpu, torch_geometric 2.8.1, pandas 3.1.1, numpy 2.5.4.
 
-For example, based on the command instructions from GH Archive, you can download all the data in
-Oct. 2026 using the **GH Archive API**:
+1. Install the packages (plus Jupyter to run the notebook):
 
-```bash
-wget -P RAW_DATA_FOLDER https://data.gharchive.org/2026-10-{01..31}-{0..23}.json.gz
-```
+   ```bash
+   pip install -r requirements.txt
+   pip install jupyter
+   ```
 
-For more download options, see the GH Archive website.
+2. Open `run.ipynb` **from the repository root** (it imports `scripts/evaluate.py` and uses
+   relative paths) and run all cells in order.
 
-## ⭐ 2. Build the tables
+The notebook does everything:
 
-```bash
-python scripts/preprocess.py --raw RAW_DATA_FOLDER --out YOUR_OUTPUT_FOLDER
-```
-
-- `RAW_DATA_FOLDER`: your own folder used in Section 1.
-- `YOUR_OUTPUT_FOLDER`: your own folder for the tables.
-
-You are required to run our provided preprocessing script before using the data for your model.
-The preprocessing script generates the 8 required tables and includes anonymization.
-
-## 3. The tables
-
-| Table | Each row is | Row time |
+| Section | What it does | Time (approx.) |
 |---|---|---|
-| `Users` | a GitHub user | `first_seen_at` |
-| `Repositories` | a repository | `first_seen_at` |
-| `PullRequests` | a pull request | `first_seen_at` |
-| `Issues` | an issue (the conversation of a pull request is also stored here, with `is_pull_request = true`) | `first_seen_at` |
-| `IssueComments` | a comment in an issue or pull request conversation | `created_at` |
-| `PRReviews` | a review of a pull request | `first_seen_at` |
-| `PRReviewComments` | a comment on specific lines of a pull request's code | `created_at` |
-| `Pushes` | a push of commits to a branch or tag | `created_at` |
+| 1 | Settings: data period, prediction time, paths | – |
+| 2 | Downloads GH Archive hourly files into `work/raw/` (existing files are skipped) | depends on network |
+| 3 | Runs `scripts/preprocess.py --raw work/raw --out work/data` | ~6 min |
+| 4–6 | Data checks and the copy-last-week baseline | < 1 min |
+| 7 | Snapshot, graph building, GNN, walk-forward validation | ~7 min |
+| 8 | Trains the final model and writes **`work/outputs/output.csv`**, then checks the format with `evaluate.py` | ~10–13 min |
+| 9 | Extra experiments (ablations); not needed for the output | ~30 min |
 
-The **row time** is the time at which a row appears in the data. For a prediction at time t, use
-only rows whose row time is before t. Do not filter pull requests, issues or reviews by
-`created_at` or `submitted_at`: they can enter the data long after they were created.
+To only reproduce the output, run sections 1–8; section 9 can be skipped.
 
-**Which users are included.** The tables contain all the activity of 9,000 fixed users (the
-*cohort*, marked with `Users.is_cohort = true`), plus the users related to their activity.
+## Data period
 
-**Times** are in UTC (no time zone is stored). Taiwan time is UTC+8.
+Hourly files from **2026-08-29 16:00 to 2026-11-14 16:00 UTC** (= 2026/08/30 00:00 –
+11/15 00:00 Taiwan time, 11 full weeks, 1,848 hours). The period is fixed in the notebook
+(`START`, `END`).
 
-## 4. Test users and output
+## Reproducibility
 
-⭐ **Test week:** 2026/11/22 00:00 – 11/29 00:00 (Taiwan time)
+- The data period is fixed and only `preprocess.py` is used to build the tables.
+- `torch.manual_seed(0)` is set before training and everything runs on CPU, so running the
+  notebook again gives the same `output.csv`.
 
-⭐ **Missing data:** Some hours are missing or incomplete in GH Archive itself. If GH Archive is
-missing the data of an activity during the test week, that activity is not scored.
+## Method (short)
 
-`submission/test_input.csv` lists the test users. Its `UserID` column is `Users.github_user_id`.
-
-Your output is a CSV file with one row per test user, exactly this header, and 1 (the user will
-do it) or 0 (the user will not) in each activity column, with no empty cells:
-
-```
-UserID,open_pr,open_issue,issue_comment,pr_review,pr_review_comment,push
-```
-
-**Example output file:** `submission/sample_submission.csv` (random predictions in the correct
-format).
-
-| Column | 1 means that during the test week the user ... |
-|---|---|
-| `open_pr` | opens a pull request |
-| `open_issue` | opens an issue (not a pull request) |
-| `issue_comment` | comments in an issue or pull request conversation |
-| `pr_review` | submits a review of a pull request |
-| `pr_review_comment` | comments on specific lines of a pull request's code |
-| `push` | pushes commits to a branch or tag |
-
-**Checking and scoring.** A file with a format error is not scored.
-
-```bash
-# Check the format of your output file
-python scripts/evaluate.py --pred output_{studentID}.csv --input submission/test_input.csv
-
-# Score your predictions for a validation week against your own answer file (same format)
-python scripts/evaluate.py --pred YOUR_PREDICTION_FILE --truth YOUR_ANSWER_FILE
-```
-
-**Scoring.** F1 for each activity; `Score = (macro-F1 + micro-F1) / 2`.
-
-**Reference scores.** These are the scores of five baseline methods that we tested on the
-week of 2026/09/27 – 10/04.
-
-| Method | macro-F1 | micro-F1 | Score |
-|---|---|---|---|
-| Random | 19.77% | 22.74% | 21.26% |
-| Predict all 0 | 0.00% | 0.00% | 0.00% |
-| Copy last week | 43.01% | 56.20% | 49.61% |
-| GNN without time encoding | 22.80% | 48.61% | 35.70% |
-| GNN with time encoding | 50.90% | 58.74% | 54.82% |
-
-- **Copy last week**: for each activity, 1 if the user did it in the 7 days before the
-  prediction time, otherwise 0.
-- **GNN**: a graph neural network on the 8 tables, as in the
-  [RelBench](https://relbench.stanford.edu) examples. The version with time encoding also
-  tells the model how long before the prediction time each row happened.
-
-## Data Claim
-
-The data used in this assignment is sourced from [GH Archive](https://www.gharchive.org), a
-publicly available archive of GitHub events. This assignment is intended for educational
-purposes within this course.
+1. **Snapshot**: for a cutoff time t, keep only rows whose row time is before t, and hide the
+   later-known columns (`merged_at`, `merged_by_id`, `closed_at`, `state_reason`,
+   `dismissed_at`) if they are not before t.
+2. **Graph**: every table row is a node and every foreign key is an edge type (plus reverse
+   edges). Node features include flags and time encodings (days before t, day of week).
+3. **Model**: per-node-type linear encoder, 2 layers of heterogeneous GraphSAGE (sum
+   aggregation), and an MLP head on user nodes with 6 outputs.
+4. **Training**: one graph per weekly cutoff; the label is the week starting 7 days after the
+   cutoff (the same 7-day gap as the real task).
+5. **Thresholds**: tuned per activity to maximize F1 on the most recent labeled week.
+6. **Validation**: walk-forward over 4 weeks (predicting 10/17, 10/24, 10/31, 11/7), each run
+   with the same steps as the final prediction.

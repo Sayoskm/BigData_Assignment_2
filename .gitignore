@@ -1,0 +1,12 @@
+# data (too large for GitHub; rebuilt by run.ipynb)
+work/
+*.json.gz
+*.parquet
+
+# slide figures (not part of the submission code)
+figures/
+
+# python / jupyter
+.venv/
+__pycache__/
+.ipynb_checkpoints/
